@@ -41,11 +41,17 @@ static const char *vert_shader =
     "   gl_Position = pvm * vec4(vtx_pos, 1.0);\n"
     "}\n";
 
-static const char *glass_shader =
+static const char *stencil_shader =
     "#version 120\n"
     "void main() {\n"
-    "//   gl_FragColor = vec4(0, 0, 0, 0.1);\n"
     "   gl_FragColor = vec4(1);\n"
+    "}\n";
+
+static const char *glass_shader =
+    "#version 120\n"
+    "uniform float opacity;"
+    "void main() {\n"
+    "   gl_FragColor = vec4(0, 0, 0, opacity);\n"
     "}\n";
 
 static const char *proj_shader =
@@ -76,12 +82,20 @@ static const char *proj_shader =
     "             out_pixel += kernel[int(y * 5 + x)] * pixel;\n"
     "        }\n"
     "    }\n"
+	/*
+	 * If the alpha channel sums to less than 1.0, that means we need
+	 * to boost pixel brightness to avoid black borders around the pixel.
+	 */
+    "    out_pixel = vec4(out_pixel.r / out_pixel.a,\n"
+    "        out_pixel.g / out_pixel.a,\n"
+    "        out_pixel.b / out_pixel.a, out_pixel.a);\n"
     "    gl_FragColor = out_pixel;\n"
     "}\n";
 
 struct hud_s {
 	mt_cairo_render_t	*mtcr;
 
+	GLuint			stencil_shader;
 	GLuint			glass_shader;
 	GLuint			proj_shader;
 
@@ -90,6 +104,7 @@ struct hud_s {
 	int			stencil_w;
 	int			stencil_h;
 
+	double			glass_opacity;
 	obj8_t			*glass;
 	const char		*glass_group;
 	obj8_t			*proj;
@@ -101,7 +116,8 @@ struct hud_s {
 };
 
 hud_t *
-hud_new(mt_cairo_render_t *mtcr, obj8_t *glass, const char *glass_group_id,
+hud_new(mt_cairo_render_t *mtcr, double glass_opacity,
+    obj8_t *glass, const char *glass_group_id,
     obj8_t *proj, const char *proj_group_id)
 {
 	hud_t *hud = safe_calloc(1, sizeof (*hud));
@@ -115,6 +131,10 @@ hud_new(mt_cairo_render_t *mtcr, obj8_t *glass, const char *glass_group_id,
 	    vert_shader, glass_shader, "vtx_pos", VTX_ATTRIB_POS,
 	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
 	VERIFY(hud->glass_shader != 0);
+	hud->stencil_shader = shader_prog_from_text("libhud_stencil_shader",
+	    vert_shader, stencil_shader, "vtx_pos", VTX_ATTRIB_POS,
+	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
+	VERIFY(hud->stencil_shader != 0);
 	hud->proj_shader = shader_prog_from_text("libhud_proj_shader",
 	    vert_shader, proj_shader, "vtx_pos", VTX_ATTRIB_POS,
 	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
@@ -122,6 +142,7 @@ hud_new(mt_cairo_render_t *mtcr, obj8_t *glass, const char *glass_group_id,
 
 	fdr_find(&hud->drs.viewport, "sim/graphics/view/viewport");
 
+	hud->glass_opacity = glass_opacity;
 	hud->glass = glass;
 	hud->glass_group = glass_group_id;
 	hud->proj = proj;
@@ -135,6 +156,7 @@ hud_destroy(hud_t *hud)
 {
 	ASSERT(hud != NULL);
 
+	glDeleteProgram(hud->stencil_shader);
 	glDeleteProgram(hud->glass_shader);
 	glDeleteProgram(hud->proj_shader);
 
@@ -219,12 +241,21 @@ hud_render(hud_t *hud)
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 
+	glUseProgram(hud->stencil_shader);
+	glUniformMatrix4fv(glGetUniformLocation(hud->stencil_shader, "pvm"),
+	    1, GL_FALSE, (GLfloat *)pvm);
+	obj8_draw_group(hud->glass, hud->glass_group, hud->stencil_shader, pvm);
+
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+
+	/* Draw the opaque glass layer */
+	glDepthMask(GL_FALSE);
 	glUseProgram(hud->glass_shader);
 	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
 	    1, GL_FALSE, (GLfloat *)pvm);
+	glUniform1f(glGetUniformLocation(hud->glass_shader, "opacity"),
+	    hud->glass_opacity);
 	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
-
-	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 
 	/* Draw the actual colimated projection */
 	glUseProgram(hud->proj_shader);
@@ -251,4 +282,5 @@ hud_render(hud_t *hud)
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_STENCIL_TEST);
+	glDepthMask(GL_TRUE);
 }

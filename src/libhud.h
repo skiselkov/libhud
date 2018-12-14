@@ -28,7 +28,7 @@ extern "C" {
 
 typedef struct hud_s hud_t;
 
-hud_t *hud_new(mt_cairo_render_t *mtcr,
+hud_t *hud_new(mt_cairo_render_t *mtcr, double glass_opacity,
     obj8_t *glass, const char *glass_group_id,
     obj8_t *proj, const char *proj_group_id);
 void hud_destroy(hud_t *hud);
