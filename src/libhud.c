@@ -1,0 +1,254 @@
+/*
+ * CDDL HEADER START
+ *
+ * This file and its contents are supplied under the terms of the
+ * Common Development and Distribution License ("CDDL"), version 1.0.
+ * You may only use this file in accordance with the terms of version
+ * 1.0 of the CDDL.
+ *
+ * A full copy of the text of the CDDL should have accompanied this
+ * source.  A copy of the CDDL is also available via the Internet at
+ * http://www.illumos.org/license/CDDL.
+ *
+ * CDDL HEADER END
+ */
+/*
+ * Copyright 2018 Saso Kiselkov. All rights reserved.
+ */
+
+#include <GL/glew.h>
+
+#include <XPLMGraphics.h>
+
+#include <acfutils/glutils.h>
+#include <acfutils/helpers.h>
+#include <acfutils/safe_alloc.h>
+#include <acfutils/shader.h>
+
+#include "libhud.h"
+
+TEXSZ_MK_TOKEN(hud_glass_tex);
+
+static const char *vert_shader =
+    "#version 120\n"
+    "uniform   mat4 pvm;\n"
+    "attribute vec3 vtx_pos;\n"
+    "attribute vec3 vtx_norm;\n"
+    "attribute vec2 vtx_tex0;\n"
+    "varying   vec2 tex_coord;\n"
+    "void main() {\n"
+    "   tex_coord = vtx_tex0;\n"
+    "   gl_Position = pvm * vec4(vtx_pos, 1.0);\n"
+    "}\n";
+
+static const char *glass_shader =
+    "#version 120\n"
+    "void main() {\n"
+    "//   gl_FragColor = vec4(0, 0, 0, 0.1);\n"
+    "   gl_FragColor = vec4(1);\n"
+    "}\n";
+
+static const char *proj_shader =
+    "#version 120\n"
+    "uniform sampler2D surf_tex;\n"
+    "uniform vec2      surf_sz;\n"
+    "uniform sampler2D stencil_tex;\n"
+    "uniform vec2      stencil_sz;\n"
+    "varying vec2      tex_coord;\n"
+    "const float     kernel[25] = float[25](\n"
+    "    0.01, 0.02, 0.04, 0.02, 0.01,\n"
+    "    0.02, 0.04, 0.08, 0.04, 0.02,\n"
+    "    0.04, 0.08, 0.16, 0.08, 0.04,\n"
+    "    0.02, 0.04, 0.08, 0.04, 0.02,\n"
+    "    0.01, 0.02, 0.04, 0.02, 0.01\n"
+    ");\n"
+    "void main() {\n"
+    "    vec4 out_pixel = vec4(0);\n"
+    "    vec4 stencil_pix = texture2D(stencil_tex,\n"
+    "        gl_FragCoord.xy / stencil_sz);\n"
+    "    if (stencil_pix.r == 0.0)\n"
+    "        discard;\n"
+    "    for (float x = 0; x < 5; x++) {\n"
+    "        for (float y = 0; y < 5; y++) {\n"
+    "             vec2 coord = tex_coord + vec2(x / surf_sz.x,\n"
+    "                 y / surf_sz.y);\n"
+    "             vec4 pixel = texture2D(surf_tex, coord);\n"
+    "             out_pixel += kernel[int(y * 5 + x)] * pixel;\n"
+    "        }\n"
+    "    }\n"
+    "    gl_FragColor = out_pixel;\n"
+    "}\n";
+
+struct hud_s {
+	mt_cairo_render_t	*mtcr;
+
+	GLuint			glass_shader;
+	GLuint			proj_shader;
+
+	GLuint			stencil_fbo;
+	GLuint			stencil_tex;
+	int			stencil_w;
+	int			stencil_h;
+
+	obj8_t			*glass;
+	const char		*glass_group;
+	obj8_t			*proj;
+	const char		*proj_group;
+
+	struct {
+		dr_t		viewport;
+	} drs;
+};
+
+hud_t *
+hud_new(mt_cairo_render_t *mtcr, obj8_t *glass, const char *glass_group_id,
+    obj8_t *proj, const char *proj_group_id)
+{
+	hud_t *hud = safe_calloc(1, sizeof (*hud));
+
+	ASSERT(mtcr != NULL);
+	ASSERT(glass != NULL);
+	ASSERT(proj != NULL);
+
+	hud->mtcr = mtcr;
+	hud->glass_shader = shader_prog_from_text("libhud_glass_shader",
+	    vert_shader, glass_shader, "vtx_pos", VTX_ATTRIB_POS,
+	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
+	VERIFY(hud->glass_shader != 0);
+	hud->proj_shader = shader_prog_from_text("libhud_proj_shader",
+	    vert_shader, proj_shader, "vtx_pos", VTX_ATTRIB_POS,
+	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
+	VERIFY(hud->proj_shader != 0);
+
+	fdr_find(&hud->drs.viewport, "sim/graphics/view/viewport");
+
+	hud->glass = glass;
+	hud->glass_group = glass_group_id;
+	hud->proj = proj;
+	hud->proj_group = proj_group_id;
+
+	return (hud);
+}
+
+void
+hud_destroy(hud_t *hud)
+{
+	ASSERT(hud != NULL);
+
+	glDeleteProgram(hud->glass_shader);
+	glDeleteProgram(hud->proj_shader);
+
+	if (hud->stencil_fbo != 0)
+		glDeleteFramebuffers(1, &hud->stencil_fbo);
+	if (hud->stencil_tex != 0) {
+		glDeleteTextures(1, &hud->stencil_tex);
+		IF_TEXSZ(TEXSZ_FREE(hud_glass_tex, GL_RED, GL_UNSIGNED_BYTE,
+		    hud->stencil_w, hud->stencil_h));
+	}
+
+	free(hud);
+}
+
+static void
+update_fbo(hud_t *hud)
+{
+	int vp_xp[4];
+	int vp_w, vp_h;
+
+	VERIFY3S(dr_getvi(&hud->drs.viewport, vp_xp, 0, 4), ==, 4);
+	/* X-Plane stores the viewport as left, bottom, right, top */
+	vp_w = vp_xp[2] - vp_xp[0];
+	vp_h = vp_xp[3] - vp_xp[1];
+
+	if (hud->stencil_w == vp_w || hud->stencil_h == vp_h) {
+		ASSERT(hud->stencil_fbo != 0);
+		return;
+	}
+
+	if (hud->stencil_fbo != 0)
+		glDeleteFramebuffers(1, &hud->stencil_fbo);
+	if (hud->stencil_tex != 0) {
+		IF_TEXSZ(TEXSZ_FREE(hud_glass_tex, GL_RED, GL_UNSIGNED_BYTE,
+		    hud->stencil_w, hud->stencil_h));
+		glDeleteTextures(1, &hud->stencil_tex);
+	}
+
+	hud->stencil_w = vp_w;
+	hud->stencil_h = vp_h;
+
+	glGenTextures(1, &hud->stencil_tex);
+	XPLMBindTexture2d(hud->stencil_tex, GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	IF_TEXSZ(TEXSZ_ALLOC(hud_glass_tex, GL_RED, GL_UNSIGNED_BYTE,
+	    hud->stencil_w, hud->stencil_h));
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, hud->stencil_w, hud->stencil_h,
+	    0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+
+	glGenFramebuffers(1, &hud->stencil_fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+	    GL_TEXTURE_2D, hud->stencil_tex, 0);
+	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
+	    GL_FRAMEBUFFER_COMPLETE);
+}
+
+void
+hud_render(hud_t *hud)
+{
+	GLint old_fbo;
+	GLuint tex;
+	mat4 pvm;
+
+	ASSERT(hud != NULL);
+
+	tex = mt_cairo_render_get_tex(hud->mtcr);
+	if (tex == 0)
+		return;
+
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
+	glEnable(GL_BLEND);
+
+	librain_get_pvm(pvm);
+
+	update_fbo(hud);
+
+	/* Draw the glass stencil layer */
+	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glUseProgram(hud->glass_shader);
+	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
+	    1, GL_FALSE, (GLfloat *)pvm);
+	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
+
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+
+	/* Draw the actual colimated projection */
+	glUseProgram(hud->proj_shader);
+
+	glUniformMatrix4fv(glGetUniformLocation(hud->proj_shader, "pvm"),
+	    1, GL_FALSE, (GLfloat *)pvm);
+
+	glActiveTexture(GL_TEXTURE0);
+	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
+	glUniform1i(glGetUniformLocation(hud->proj_shader, "surf_tex"), 0);
+	glUniform2f(glGetUniformLocation(hud->proj_shader, "surf_sz"),
+	    mt_cairo_render_get_width(hud->mtcr),
+	    mt_cairo_render_get_height(hud->mtcr));
+
+	glActiveTexture(GL_TEXTURE1);
+	XPLMBindTexture2d(hud->stencil_tex, GL_TEXTURE_2D);
+	glUniform1i(glGetUniformLocation(hud->proj_shader, "stencil_tex"), 1);
+
+	glUniform2f(glGetUniformLocation(hud->proj_shader, "stencil_sz"),
+	    hud->stencil_w, hud->stencil_h);
+
+	obj8_draw_group(hud->proj, hud->proj_group, hud->proj_shader, pvm);
+
+	glUseProgram(0);
+	glActiveTexture(GL_TEXTURE0);
+	glDisable(GL_STENCIL_TEST);
+}
