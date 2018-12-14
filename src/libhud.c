@@ -217,6 +217,19 @@ update_fbo(hud_t *hud)
 	    GL_FRAMEBUFFER_COMPLETE);
 }
 
+static void
+render_glass(hud_t *hud, mat4 pvm)
+{
+	if (hud->glass_opacity == 0)
+		return;
+	glUseProgram(hud->glass_shader);
+	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
+	    1, GL_FALSE, (GLfloat *)pvm);
+	glUniform1f(glGetUniformLocation(hud->glass_shader, "opacity"),
+	    hud->glass_opacity);
+	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
+}
+
 void
 hud_render(hud_t *hud)
 {
@@ -226,14 +239,16 @@ hud_render(hud_t *hud)
 
 	ASSERT(hud != NULL);
 
+	glEnable(GL_BLEND);
+	librain_get_pvm(pvm);
+
 	tex = mt_cairo_render_get_tex(hud->mtcr);
-	if (tex == 0)
+	if (tex == 0) {
+		render_glass(hud, pvm);
 		return;
+	}
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
-	glEnable(GL_BLEND);
-
-	librain_get_pvm(pvm);
 
 	update_fbo(hud);
 
@@ -250,12 +265,7 @@ hud_render(hud_t *hud)
 
 	/* Draw the opaque glass layer */
 	glDepthMask(GL_FALSE);
-	glUseProgram(hud->glass_shader);
-	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
-	    1, GL_FALSE, (GLfloat *)pvm);
-	glUniform1f(glGetUniformLocation(hud->glass_shader, "opacity"),
-	    hud->glass_opacity);
-	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
+	render_glass(hud, pvm);
 
 	/* Draw the actual colimated projection */
 	glUseProgram(hud->proj_shader);
