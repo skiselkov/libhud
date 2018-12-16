@@ -18,6 +18,7 @@
 
 #include <GL/glew.h>
 
+#include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 
 #include <acfutils/glutils.h>
@@ -236,6 +237,9 @@ hud_render(hud_t *hud)
 	GLint old_fbo;
 	GLuint tex;
 	mat4 pvm;
+	GLint vp[4];
+	int w, h;
+	bool_t restore_vp = B_FALSE;
 
 	ASSERT(hud != NULL);
 
@@ -249,6 +253,13 @@ hud_render(hud_t *hud)
 	}
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
+
+	glGetIntegerv(GL_VIEWPORT, vp);
+	XPLMGetScreenSize(&w, &h);
+	if (vp[2] != w || vp[3] != h) {
+		glViewport(vp[0], vp[1], w, h);
+		restore_vp = B_TRUE;
+	}
 
 	update_fbo(hud);
 
@@ -293,4 +304,7 @@ hud_render(hud_t *hud)
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_STENCIL_TEST);
 	glDepthMask(GL_TRUE);
+
+	if (restore_vp)
+		glViewport(vp[0], vp[1], vp[2], vp[3]);
 }
