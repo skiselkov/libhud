@@ -113,10 +113,7 @@ static const char *proj_shader =
 	 * If the alpha channel sums to less than 1.0, that means we need
 	 * to boost pixel brightness to avoid black borders around the pixel.
 	 */
-    "    out_pixel = vec4(out_pixel.r / out_pixel.a,\n"
-    "        out_pixel.g / out_pixel.a,\n"
-    "        out_pixel.b / out_pixel.a, out_pixel.a);\n"
-    "    gl_FragColor = out_pixel;\n"
+    "    gl_FragColor = vec4(out_pixel.rgb / out_pixel.a, out_pixel.a);\n"
     "}\n";
 
 struct hud_s {
