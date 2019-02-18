@@ -13,14 +13,14 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
-#include <GL/glew.h>
 
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 
+#include <acfutils/glew.h>
 #include <acfutils/glutils.h>
 #include <acfutils/helpers.h>
 #include <acfutils/safe_alloc.h>
