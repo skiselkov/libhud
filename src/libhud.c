@@ -45,14 +45,14 @@ static const char *vert_shader =
 static const char *stencil_shader =
     "#version 120\n"
     "void main() {\n"
-    "   gl_FragColor = vec4(1);\n"
+    "   gl_FragColor = vec4(1.0);\n"
     "}\n";
 
 static const char *glass_shader =
     "#version 120\n"
     "uniform float opacity;"
     "void main() {\n"
-    "   gl_FragColor = vec4(0, 0, 0, opacity);\n"
+    "   gl_FragColor = vec4(0.0, 0.0, 0.0, opacity);\n"
     "}\n";
 
 static const char *proj_shader =
@@ -133,10 +133,6 @@ struct hud_s {
 	const char		*glass_group;
 	obj8_t			*proj;
 	const char		*proj_group;
-
-	struct {
-		dr_t		viewport;
-	} drs;
 };
 
 hud_t *
@@ -163,8 +159,6 @@ hud_new(mt_cairo_render_t *mtcr, double glass_opacity,
 	    vert_shader, proj_shader, "vtx_pos", VTX_ATTRIB_POS,
 	    "vtx_tex0", VTX_ATTRIB_TEX0, NULL);
 	VERIFY(hud->proj_shader != 0);
-
-	fdr_find(&hud->drs.viewport, "sim/graphics/view/viewport");
 
 	hud->glass_opacity = glass_opacity;
 	hud->glass = glass;
@@ -198,15 +192,15 @@ hud_destroy(hud_t *hud)
 static void
 update_fbo(hud_t *hud)
 {
-	int vp_xp[4];
+	vec4 vp;
 	int vp_w, vp_h;
 
-	VERIFY3S(dr_getvi(&hud->drs.viewport, vp_xp, 0, 4), ==, 4);
-	/* X-Plane stores the viewport as left, bottom, right, top */
-	vp_w = vp_xp[2] - vp_xp[0];
-	vp_h = vp_xp[3] - vp_xp[1];
+	librain_get_vp(vp);
 
-	if (hud->stencil_w == vp_w || hud->stencil_h == vp_h) {
+	vp_w = vp[2];
+	vp_h = vp[3];
+
+	if (hud->stencil_w == vp_w && hud->stencil_h == vp_h) {
 		ASSERT(hud->stencil_fbo != 0);
 		return;
 	}
@@ -242,51 +236,14 @@ update_fbo(hud_t *hud)
 }
 
 static void
-render_glass(hud_t *hud, mat4 pvm)
-{
-	if (hud->glass_opacity == 0)
-		return;
-	glUseProgram(hud->glass_shader);
-	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
-	    1, GL_FALSE, (GLfloat *)pvm);
-	glUniform1f(glGetUniformLocation(hud->glass_shader, "opacity"),
-	    hud->glass_opacity);
-	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
-}
-
-void
-hud_render(hud_t *hud)
+render_stencil(hud_t *hud, const mat4 pvm)
 {
 	GLint old_fbo;
-	GLuint tex;
-	mat4 pvm;
-	GLint vp[4];
-	int w, h;
-	bool_t restore_vp = B_FALSE;
 
-	ASSERT(hud != NULL);
+	glutils_debug_push(0, "hud_render_stencil");
 
-	glEnable(GL_BLEND);
-	librain_get_pvm(pvm);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 
-	tex = mt_cairo_render_get_tex(hud->mtcr);
-	if (tex == 0) {
-		render_glass(hud, pvm);
-		return;
-	}
-
-	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
-
-	glGetIntegerv(GL_VIEWPORT, vp);
-	XPLMGetScreenSize(&w, &h);
-	if (vp[2] != w || vp[3] != h) {
-		glViewport(vp[0], vp[1], w, h);
-		restore_vp = B_TRUE;
-	}
-
-	update_fbo(hud);
-
-	/* Draw the glass stencil layer */
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -297,37 +254,88 @@ hud_render(hud_t *hud)
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 
-	/* Draw the opaque glass layer */
-	glDepthMask(GL_FALSE);
-	render_glass(hud, pvm);
+	glutils_debug_pop();
+}
 
-	/* Draw the actual colimated projection */
-	glUseProgram(hud->proj_shader);
+static void
+render_glass(hud_t *hud, const mat4 pvm)
+{
+	if (hud->glass_opacity == 0)
+		return;
 
-	glUniformMatrix4fv(glGetUniformLocation(hud->proj_shader, "pvm"),
+	glutils_debug_push(0, "hud_render_glass");
+
+	glUseProgram(hud->glass_shader);
+	glUniformMatrix4fv(glGetUniformLocation(hud->glass_shader, "pvm"),
+	    1, GL_FALSE, (GLfloat *)pvm);
+	glUniform1f(glGetUniformLocation(hud->glass_shader, "opacity"),
+	    hud->glass_opacity);
+	obj8_draw_group(hud->glass, hud->glass_group, hud->glass_shader, pvm);
+
+	glutils_debug_pop();
+}
+
+static void
+render_projection(hud_t *hud, const mat4 pvm)
+{
+	GLuint tex = mt_cairo_render_get_tex(hud->mtcr);
+	GLuint prog = hud->proj_shader;
+
+	if (tex == 0)
+		return;
+
+	glutils_debug_push(0, "hud_render_projection");
+
+	glUseProgram(prog);
+
+	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"),
 	    1, GL_FALSE, (GLfloat *)pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
-	glUniform1i(glGetUniformLocation(hud->proj_shader, "surf_tex"), 0);
-	glUniform2f(glGetUniformLocation(hud->proj_shader, "surf_sz"),
+	glUniform1i(glGetUniformLocation(prog, "surf_tex"), 0);
+	glUniform2f(glGetUniformLocation(prog, "surf_sz"),
 	    mt_cairo_render_get_width(hud->mtcr),
 	    mt_cairo_render_get_height(hud->mtcr));
 
 	glActiveTexture(GL_TEXTURE1);
 	XPLMBindTexture2d(hud->stencil_tex, GL_TEXTURE_2D);
-	glUniform1i(glGetUniformLocation(hud->proj_shader, "stencil_tex"), 1);
+	glUniform1i(glGetUniformLocation(prog, "stencil_tex"), 1);
 
-	glUniform2f(glGetUniformLocation(hud->proj_shader, "stencil_sz"),
+	glUniform2f(glGetUniformLocation(prog, "stencil_sz"),
 	    hud->stencil_w, hud->stencil_h);
 
-	obj8_draw_group(hud->proj, hud->proj_group, hud->proj_shader, pvm);
+	obj8_draw_group(hud->proj, hud->proj_group, prog, pvm);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
-	glDisable(GL_STENCIL_TEST);
+
+	glutils_debug_pop();
+}
+
+void
+hud_render(hud_t *hud)
+{
+	mat4 pvm;
+
+	ASSERT(hud != NULL);
+	glutils_debug_push(0, "hud_render");
+
+	glEnable(GL_BLEND);
+	librain_get_pvm(pvm);
+
+	update_fbo(hud);
+
+	/* Draw the glass stencil layer */
+	render_stencil(hud, pvm);
+
+	/* Draw the opaque glass layer */
+	glDepthMask(GL_FALSE);
+	render_glass(hud, pvm);
+
+	/* Draw the actual colimated projection */
+	render_projection(hud, pvm);
 	glDepthMask(GL_TRUE);
 
-	if (restore_vp)
-		glViewport(vp[0], vp[1], vp[2], vp[3]);
+	glutils_debug_pop();
 }
