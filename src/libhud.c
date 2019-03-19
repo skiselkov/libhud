@@ -61,6 +61,7 @@ static const char *proj_shader =
     "uniform vec2      surf_sz;\n"
     "uniform sampler2D stencil_tex;\n"
     "uniform vec2      stencil_sz;\n"
+    "uniform vec4      vp;\n"
     "varying vec2      tex_coord;\n"
     "#define GAUSS_SIZE 5\n"
     "#define GAUSS_KERNEL float[25]( "
@@ -76,7 +77,7 @@ static const char *proj_shader =
     "void main() {\n"
     "    vec4 out_pixel = vec4(0.0);\n"
     "    vec4 stencil_pix = texture2D(stencil_tex,\n"
-    "        gl_FragCoord.xy / stencil_sz);\n"
+    "        (gl_FragCoord.xy - vp.xy) / stencil_sz);\n"
     "    if (stencil_pix.r == 0.0)\n"
     "        discard;\n"
     /* row 0 */
@@ -236,15 +237,19 @@ update_fbo(hud_t *hud)
 }
 
 static void
-render_stencil(hud_t *hud, const mat4 pvm)
+render_stencil(const hud_t *hud, const mat4 pvm)
 {
 	GLint old_fbo;
+	vec4 vp;
+
+	librain_get_vp(vp);
 
 	glutils_debug_push(0, "hud_render_stencil");
 
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
+	glViewport(0, 0, hud->stencil_w, hud->stencil_h);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(hud->stencil_shader);
@@ -253,12 +258,13 @@ render_stencil(hud_t *hud, const mat4 pvm)
 	obj8_draw_group(hud->glass, hud->glass_group, hud->stencil_shader, pvm);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+	glViewport(vp[0], vp[1], vp[2], vp[3]);
 
 	glutils_debug_pop();
 }
 
 static void
-render_glass(hud_t *hud, const mat4 pvm)
+render_glass(const hud_t *hud, const mat4 pvm)
 {
 	if (hud->glass_opacity == 0)
 		return;
@@ -276,13 +282,16 @@ render_glass(hud_t *hud, const mat4 pvm)
 }
 
 static void
-render_projection(hud_t *hud, const mat4 pvm)
+render_projection(const hud_t *hud, const mat4 pvm)
 {
 	GLuint tex = mt_cairo_render_get_tex(hud->mtcr);
 	GLuint prog = hud->proj_shader;
+	vec4 vp;
 
 	if (tex == 0)
 		return;
+
+	librain_get_vp(vp);
 
 	glutils_debug_push(0, "hud_render_projection");
 
@@ -304,6 +313,9 @@ render_projection(hud_t *hud, const mat4 pvm)
 
 	glUniform2f(glGetUniformLocation(prog, "stencil_sz"),
 	    hud->stencil_w, hud->stencil_h);
+
+	glUniform4f(glGetUniformLocation(prog, "vp"),
+	    vp[0], vp[1], vp[2], vp[3]);
 
 	obj8_draw_group(hud->proj, hud->proj_group, prog, pvm);
 
