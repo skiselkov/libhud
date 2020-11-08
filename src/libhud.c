@@ -301,14 +301,14 @@ render_projection(const hud_t *hud, const mat4 pvm)
 	    1, GL_FALSE, (GLfloat *)pvm);
 
 	glActiveTexture(GL_TEXTURE0);
-	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, tex);
 	glUniform1i(glGetUniformLocation(prog, "surf_tex"), 0);
 	glUniform2f(glGetUniformLocation(prog, "surf_sz"),
 	    mt_cairo_render_get_width(hud->mtcr),
 	    mt_cairo_render_get_height(hud->mtcr));
 
 	glActiveTexture(GL_TEXTURE1);
-	XPLMBindTexture2d(hud->stencil_tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, hud->stencil_tex);
 	glUniform1i(glGetUniformLocation(prog, "stencil_tex"), 1);
 
 	glUniform2f(glGetUniformLocation(prog, "stencil_sz"),
@@ -320,6 +320,8 @@ render_projection(const hud_t *hud, const mat4 pvm)
 	obj8_draw_group(hud->proj, hud->proj_group, prog, pvm);
 
 	glUseProgram(0);
+	XPLMBindTexture2d(0, 1);
+	XPLMBindTexture2d(0, 0);
 	glActiveTexture(GL_TEXTURE0);
 
 	glutils_debug_pop();
