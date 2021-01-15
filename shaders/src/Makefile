@@ -11,7 +11,7 @@
 #
 # CDDL HEADER END
 #
-# Copyright 2018 Saso Kiselkov. All rights reserved.
+# Copyright 2021 Saso Kiselkov. All rights reserved.
 
 SPVS = \
     generic.vert.spv \
