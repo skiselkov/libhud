@@ -21,7 +21,7 @@ SPVS = \
     proj_mono.frag.spv \
     stencil.frag.spv
 
-OUTDIR=..
+OUTDIR=build
 SPIRVX_TGT_VERSION=120
 SPIRVX_420_VERSION=420
 SPIRVX_430_VERSION=430
