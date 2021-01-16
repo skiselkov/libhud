@@ -210,6 +210,16 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 		hud->vp[idx][i] = vp[i];
 	hud->rev_y = (dr_geti(&hud->drs.rev_y) != 0);
 	hud->rev_float_z = (dr_geti(&hud->drs.rev_float_z) != 0);
+	/*
+	 * When not using reverse float Z (which only happens in
+	 * OpenGL non-VR rendering), the projection matrix X-Plane
+	 * uses has the near clipping plane very far (about 1
+	 * meter), so we bring it much closer to get it fixed up.
+	 */
+	if (!hud->rev_float_z) {
+		for (int i = 0; i < 4; i++)
+			hud->proj_mtx[idx][3][i] /= 100;
+	}
 	if (hud->drs.aa_ratio_avail) {
 		vect2_t fsaa_ratio = VECT2(dr_getf(&hud->drs.fsaa_ratio_x),
 		    dr_getf(&hud->drs.fsaa_ratio_y));
