@@ -18,7 +18,8 @@ SPVS = \
     glass.frag.spv \
     proj_glow.frag.spv \
     proj_noglow.frag.spv \
-    proj_mono.frag.spv \
+    proj_mono_glow.frag.spv \
+    proj_mono_noglow.frag.spv \
     stencil.frag.spv
 
 OUTDIR=build
@@ -89,7 +90,9 @@ $(OUTDIR)/proj_glow.frag.spv : proj.frag
 	$(call BUILD_SHADER,frag,-DGLOW=1 -DMONOCHROME=0)
 $(OUTDIR)/proj_noglow.frag.spv : proj.frag
 	$(call BUILD_SHADER,frag,-DGLOW=0 -DMONOCHROME=0)
-$(OUTDIR)/proj_mono.frag.spv : proj.frag
+$(OUTDIR)/proj_mono_glow.frag.spv : proj.frag
+	$(call BUILD_SHADER,frag,-DGLOW=1 -DMONOCHROME=1)
+$(OUTDIR)/proj_mono_noglow.frag.spv : proj.frag
 	$(call BUILD_SHADER,frag,-DGLOW=0 -DMONOCHROME=1)
 
 $(OUTDIR)/%.vert.spv : %.vert

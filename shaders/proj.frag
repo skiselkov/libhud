@@ -20,9 +20,10 @@ layout(location = 12) uniform sampler2D	stencil_tex;
 layout(location = 13) uniform vec2	stencil_sz;
 layout(location = 14) uniform vec4	vp;
 layout(location = 15) uniform float	brt;
+layout(location = 16) uniform float	blur_radius;
 
 #if	MONOCHROME
-layout(location = 16) uniform vec3	beam_color;
+layout(location = 20) uniform vec3	beam_color;
 #endif
 
 layout(location = 0) in vec2		tex_coord;
@@ -38,9 +39,17 @@ const float gauss_kernel[25] = float[25](
     0.01, 0.02, 0.04, 0.02, 0.01
 );
 
-#define BLUR_I(x, y, _row, _col) \
-	out_pixel += texture(surf_tex, tex_coord + vec2(x, y) / surf_sz) * \
+#if	MONOCHROME
+#define BLUR_I(_x, _y, _row, _col) \
+	out_pixel.r += texture(surf_tex, tex_coord + vec2((_x), (_y)) * \
+	    blur_radius / surf_sz).r * \
 	    gauss_kernel[(_row) * GAUSS_SIZE + (_col)]
+#else	/* !MONOCHROME */
+#define BLUR_I(_x, _y, _row, _col) \
+	out_pixel += texture(surf_tex, tex_coord + vec2((_x), (_y)) * \
+	    blur_radius / surf_sz) * \
+	    gauss_kernel[(_row) * GAUSS_SIZE + (_col)]
+#endif	/* !MONOCHROME */
 
 void
 main(void)
