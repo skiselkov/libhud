@@ -754,8 +754,7 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 	glUniform2f(hud->proj_shader[prog].stencil_sz,
 	    hud->stencil_w, hud->stencil_h);
 
-	glUniform4f(hud->proj_shader[prog].vp,
-	    vp[0], vp[1], vp[2], vp[3]);
+	glUniform4f(hud->proj_shader[prog].vp, vp[0], vp[1], vp[2], vp[3]);
 	glUniform1f(hud->proj_shader[prog].brt, hud->brt);
 
 	glUniform1f(hud->proj_shader[prog].blur_radius, hud->blur_radius);
