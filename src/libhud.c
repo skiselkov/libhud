@@ -154,6 +154,7 @@ struct hud_s {
 
 	GLuint			stencil_fbo;
 	GLuint			stencil_tex;
+	GLuint			stencil_depth_rbo;
 	int			stencil_w;
 	int			stencil_h;
 
@@ -445,6 +446,8 @@ hud_destroy(hud_t *hud)
 	}
 	if (hud->stencil_fbo != 0)
 		glDeleteFramebuffers(1, &hud->stencil_fbo);
+	if (hud->stencil_depth_rbo != 0)
+		glDeleteRenderbuffers(1, &hud->stencil_depth_rbo);
 	if (hud->stencil_tex != 0) {
 		glDeleteTextures(1, &hud->stencil_tex);
 		IF_TEXSZ(TEXSZ_FREE(hud_glass_tex, GL_RED, GL_UNSIGNED_BYTE,
@@ -623,6 +626,8 @@ update_fbo(hud_t *hud, const vec4 vp)
 	}
 	if (hud->stencil_fbo != 0)
 		glDeleteFramebuffers(1, &hud->stencil_fbo);
+	if (hud->stencil_depth_rbo != 0)
+		glDeleteRenderbuffers(1, &hud->stencil_depth_rbo);
 	if (hud->stencil_tex != 0) {
 		IF_TEXSZ(TEXSZ_FREE(hud_glass_tex, GL_RED, GL_UNSIGNED_BYTE,
 		    hud->stencil_w, hud->stencil_h));
@@ -633,7 +638,7 @@ update_fbo(hud_t *hud, const vec4 vp)
 	hud->stencil_h = vp_h;
 
 	glGenTextures(1, &hud->stencil_tex);
-	XPLMBindTexture2d(hud->stencil_tex, GL_TEXTURE_2D);
+	XPLMBindTexture2d(hud->stencil_tex, 0);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -643,10 +648,18 @@ update_fbo(hud_t *hud, const vec4 vp)
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, hud->stencil_w, hud->stencil_h,
 	    0, GL_RED, GL_UNSIGNED_BYTE, NULL);
 
+	glGenRenderbuffers(1, &hud->stencil_depth_rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, hud->stencil_depth_rbo);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16,
+	    hud->stencil_w, hud->stencil_h);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
 	glGenFramebuffers(1, &hud->stencil_fbo);
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 	    GL_TEXTURE_2D, hud->stencil_tex, 0);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+	    GL_RENDERBUFFER, hud->stencil_depth_rbo);
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
 	    GL_FRAMEBUFFER_COMPLETE);
 }
