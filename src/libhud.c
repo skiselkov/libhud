@@ -127,7 +127,6 @@ struct hud_s {
 	bool			rev_float_z;
 	float			brt;
 	bool			glow;
-	vect3_t			monochrome;
 	float			blur_radius;
 	bool			depth_test;
 
@@ -393,7 +392,6 @@ hud_new(const char *shader_dir, mt_cairo_render_t *mtcr, double glass_opacity,
 	hud->shader_dir = safe_strdup(shader_dir);
 	hud->mtcr = mtcr;
 	hud->brt = 1;
-	hud->monochrome = NULL_VECT3;
 
 	if (!reload_shaders(hud))
 		goto errout;
@@ -585,46 +583,6 @@ hud_get_glow(const hud_t *hud, float *blur_radius)
 }
 
 /**
- * Enables or disables monochrome color mode. By default, the HUD object
- * expects the mt_cairo_render to be in full RGBA mode. While useful for
- * full-color HUDs, most commercial HUDs are monochrome (usually green).
- * For those HUDs, it would make sense to optimize the entire render
- * path to avoid having to transfer 4x as much data for no good reason.
- *
- * By passing a non-NULL color vector here, the HUD object will switch
- * the projection render to treat the first channel in the
- * mt_cairo_render surface as an alpha channel, instead of color. The
- * x, y and z fields in the second argument of this function are then
- * treated as the RGB value of the HUD projector (value range 0-1).
- * This allows you to set the mt_cairo_render to monochrome mode as
- * well (using mt_cairo_render_set_monochrome - it doesn't matter what
- * color you set there, even ZERO_VECT3 will work). This ultimately
- * results in the entire pipeline from mt_cairo_render all the way to
- * the GPU to only need a single byte per pixel instead of 4, and thus
- * significantly reduces the memory streaming bandwidth requirement.
- *
- * To reset the HUD back into full-RGBA mode, pass a NULL_VECT3 here.
- */
-void
-hud_set_monochrome(hud_t *hud, vect3_t color)
-{
-	ASSERT(hud != NULL);
-	hud->monochrome = color;
-}
-
-/**
- * Returns the HUD's monochrome color setting. If the HUD is using RGBA
- * rendering mode instead (which is the default), this function will
- * return NULL_VECT3.
- */
-vect3_t
-hud_get_monochrome(const hud_t *hud)
-{
-	ASSERT(hud != NULL);
-	return (hud->monochrome);
-}
-
-/**
  * Configures whether the projection is rendered with depth testing enabled.
  * The default is depth testing disabled, because the projection is rendered
  * in window-space without a proper 3D depth buffer. However, when using
@@ -746,6 +704,7 @@ static void
 render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
     unsigned prog)
 {
+	vect3_t monochrome;
 	GLuint tex;
 
 	ASSERT(hud != NULL);
@@ -756,6 +715,7 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 	tex = mt_cairo_render_get_tex(hud->mtcr);
 	if (tex == 0)
 		return;
+	monochrome = mt_cairo_render_get_monochrome(hud->mtcr);
 
 	glutils_debug_push(0, "hud_render_projection");
 
@@ -785,9 +745,9 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 
 	glUniform1f(hud->proj_shader[prog].blur_radius, hud->blur_radius);
 	glUniform1f(hud->proj_shader[prog].brt, hud->brt);
-	if (!IS_NULL_VECT(hud->monochrome)) {
+	if (!IS_NULL_VECT(monochrome)) {
 		glUniform3f(hud->proj_shader[prog].beam_color,
-		    hud->monochrome.x, hud->monochrome.y, hud->monochrome.z);
+		    monochrome.x, monochrome.y, monochrome.z);
 	}
 	obj8_draw_group(hud->proj, hud->proj_group,
 	    hud->proj_shader[prog].prog, pvm);
@@ -810,9 +770,13 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 void
 hud_render_eye(hud_t *hud, const mat4 pvm, const vec4 vp)
 {
+	vect3_t monochrome;
+
 	ASSERT(hud != NULL);
 	ASSERT(pvm != NULL);
 	ASSERT(vp != NULL);
+
+	monochrome = mt_cairo_render_get_monochrome(hud->mtcr);
 
 	glutils_debug_push(0, "hud_render");
 
@@ -829,12 +793,12 @@ hud_render_eye(hud_t *hud, const mat4 pvm, const vec4 vp)
 
 	/* Draw the actual collimated projection */
 	if (hud->glow) {
-		if (IS_NULL_VECT(hud->monochrome))
+		if (IS_NULL_VECT(monochrome))
 			render_projection(hud, pvm, vp, PROJ_SHADER_GLOW);
 		else
 			render_projection(hud, pvm, vp, PROJ_SHADER_MONO_GLOW);
 	}
-	if (IS_NULL_VECT(hud->monochrome))
+	if (IS_NULL_VECT(monochrome))
 		render_projection(hud, pvm, vp, PROJ_SHADER_NOGLOW);
 	else
 		render_projection(hud, pvm, vp, PROJ_SHADER_MONO_NOGLOW);
