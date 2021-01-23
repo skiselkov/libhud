@@ -47,6 +47,9 @@ bool hud_get_glow(const hud_t *hud, float *blur_radius);
 void hud_set_monochrome(hud_t *hud, vect3_t color);
 vect3_t hud_get_monochrome(const hud_t *hud);
 
+void hud_set_depth_test(hud_t *hud, bool flag);
+bool hud_get_depth_test(const hud_t *hud);
+
 void hud_set_mtcr(hud_t *hud, mt_cairo_render_t *mtcr);
 mt_cairo_render_t *hud_get_mtcr(const hud_t *hud);
 

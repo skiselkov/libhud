@@ -129,6 +129,7 @@ struct hud_s {
 	bool			glow;
 	vect3_t			monochrome;
 	float			blur_radius;
+	bool			depth_test;
 
 	struct {
 		GLuint		prog;
@@ -623,6 +624,30 @@ hud_get_monochrome(const hud_t *hud)
 	return (hud->monochrome);
 }
 
+/**
+ * Configures whether the projection is rendered with depth testing enabled.
+ * The default is depth testing disabled, because the projection is rendered
+ * in window-space without a proper 3D depth buffer. However, when using
+ * librain z-objets, there is usable depth buffer information, so setting
+ * this flag enables proper z-masking of the HUD projection.
+ */
+void
+hud_set_depth_test(hud_t *hud, bool flag)
+{
+	ASSERT(hud != NULL);
+	hud->depth_test = flag;
+}
+
+/*
+ * Returns true when depth testing is enabled, false if it isn't.
+ * The default is false.
+ */
+bool
+hud_get_depth_test(const hud_t *hud)
+{
+	return (hud->depth_test);
+}
+
 static void
 update_fbo(hud_t *hud, const vec4 vp)
 {
@@ -734,7 +759,8 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 
 	glutils_debug_push(0, "hud_render_projection");
 
-	glDisable(GL_DEPTH_TEST);
+	if (!hud->depth_test)
+		glDisable(GL_DEPTH_TEST);
 	glUseProgram(hud->proj_shader[prog].prog);
 
 	glUniformMatrix4fv(hud->proj_shader[prog].pvm,
@@ -770,7 +796,8 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 	XPLMBindTexture2d(0, 1);
 	XPLMBindTexture2d(0, 0);
 	glActiveTexture(GL_TEXTURE0);
-	glEnable(GL_DEPTH_TEST);
+	if (!hud->depth_test)
+		glEnable(GL_DEPTH_TEST);
 
 	glutils_debug_pop();
 }
