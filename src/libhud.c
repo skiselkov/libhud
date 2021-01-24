@@ -188,8 +188,8 @@ static int
 capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	hud_t *hud;
-	int idx;
-	int vp[4];
+	int idx, dct;
+	int vp[4], vp2[4];
 
 	UNUSED(phase);
 	UNUSED(before);
@@ -198,7 +198,8 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	/*
 	 * No GL calls take place here, so no need for GLUTILS_RESET_ERRORS()
 	 */
-	switch (dr_geti(&hud->drs.draw_call_type)) {
+	dct = dr_geti(&hud->drs.draw_call_type);
+	switch (dct) {
 	case DRAW_CALL_RIGHT_EYE:
 		idx = 1;
 		hud->num_eyes = 2;
@@ -217,8 +218,18 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	VERIFY3S(dr_getvf32(&hud->drs.proj_mtx,
 	    (float *)hud->proj_mtx[idx], 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&hud->drs.vp, vp, 0, 4), ==, 4);
+	/*
+	 * There's a bug in X-Plane where fetching the viewport via the
+	 * dataref will result in a X-offset of 0 on the right eye in
+	 * stereo 3D. That cannot be, as then both the left & right eye
+	 * viewports would overlap. So shift over the right eye by the
+	 * viewport width to compensate. In case X-Plane ever fixes this
+	 * bug, we first check that the viewport X offset was indeed zero.
+	 */
+	if (dct == DRAW_CALL_RIGHT_EYE && vp[0] == 0)
+		vp[0] += vp[2];
 	for (int i = 0; i < 4; i++)
-		hud->vp[idx][i] = vp[i];
+		hud->vp[idx][i] = vp2[i];
 	hud->rev_y = (dr_geti(&hud->drs.rev_y) != 0);
 	hud->rev_float_z = (dr_geti(&hud->drs.rev_float_z) != 0);
 	/*
@@ -679,7 +690,7 @@ render_stencil(const hud_t *hud, const mat4 pvm, const vec4 vp)
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
 	glViewport(0, 0, hud->stencil_w, hud->stencil_h);
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(hud->stencil_shader.prog);
 	glUniformMatrix4fv(hud->stencil_shader.pvm, 1, GL_FALSE,
