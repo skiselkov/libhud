@@ -189,7 +189,7 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	hud_t *hud;
 	int idx, dct;
-	int vp[4], vp2[4];
+	int vp[4];
 
 	UNUSED(phase);
 	UNUSED(before);
@@ -229,7 +229,7 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	if (dct == DRAW_CALL_RIGHT_EYE && vp[0] == 0)
 		vp[0] += vp[2];
 	for (int i = 0; i < 4; i++)
-		hud->vp[idx][i] = vp2[i];
+		hud->vp[idx][i] = vp[i];
 	hud->rev_y = (dr_geti(&hud->drs.rev_y) != 0);
 	hud->rev_float_z = (dr_geti(&hud->drs.rev_float_z) != 0);
 	/*
