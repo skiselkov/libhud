@@ -41,8 +41,8 @@ bool hud_get_enabled(const hud_t *hud);
 void hud_set_brightness(hud_t *hud, float brt);
 float hud_get_brightness(const hud_t *hud);
 
-void hud_set_glow(hud_t *hud, bool flag, float blur_radius);
-bool hud_get_glow(const hud_t *hud, float *blur_radius);
+void hud_set_glow(hud_t *hud, bool flag, float blur_radius, vect3_t glow_color);
+bool hud_get_glow(const hud_t *hud, float *blur_radius, vect3_t *glow_color);
 
 void hud_set_depth_test(hud_t *hud, bool flag);
 bool hud_get_depth_test(const hud_t *hud);

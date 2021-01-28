@@ -129,6 +129,7 @@ struct hud_s {
 	bool			glow;
 	float			blur_radius;
 	bool			depth_test;
+	vect3_t			glow_color;
 
 	struct {
 		GLuint		prog;
@@ -569,30 +570,48 @@ hud_get_mtcr(const hud_t *hud)
 
 /**
  * Controls whether the fragment shader applies a slight blur shader to
- * the projected image. By default, this is `false'. When you set flag
- * to `true', you should also pass a `blur_radius' value, which controls
- * how far the fragment shader blurs the image. This should be between
- * 0 and around 2. Any higher, and there's a chance of visual artifacts.
+ * the projected image.
+ *
+ * @param hud The HUD object whose glow status to change.
+ * @param flag Enables or disables the glow render pass. By default, this
+ *	is `false'.
+ * @param blur_radius When you set flag to `true', you should also pass a
+ *	radius value in this argument. This controls how far the fragment
+ *	shader blurs the image. This should be between 0 and around 2. Any
+ *	higher, and there's a chance of visual artifacts.
+ * @param glow_color This lets you set a separate darker color for the
+ *	blurred glow image. This can sometimes help generate a bit of
+ *	contrast to the background sky, which can be quite bright. Please
+ *	note that this only works on a monochrome HUD render. In RGBA mode,
+ *	this argument is ignored.
  */
 void
-hud_set_glow(hud_t *hud, bool flag, float blur_radius)
+hud_set_glow(hud_t *hud, bool flag, float blur_radius, vect3_t glow_color)
 {
 	ASSERT(hud != NULL);
 	hud->glow = flag;
 	hud->blur_radius = blur_radius;
+	hud->glow_color = glow_color;
 }
 
 /**
  * Returns true if the HUD is using a glow/blur filter in the final
- * projection render, or false if not. If the `blur_radius' argument
- * is provided, it is filled with the blur radius of the glow effect.
+ * projection render, or false if not.
+ *
+ * @param hud The HUD object whose glow status to read.
+ * @param blur_radius If this argument is not NULL, it will be filled with
+ *	the blur radius of the glow effect.
+ * @param glow_color If this argument is not NULL, it will be filled with
+ *	the color of the glow effect render.
  */
 bool
-hud_get_glow(const hud_t *hud, float *blur_radius)
+hud_get_glow(const hud_t *hud, float *blur_radius, vect3_t *glow_color)
 {
 	ASSERT(hud != NULL);
 	if (blur_radius != NULL)
 		*blur_radius = hud->blur_radius;
+	if (glow_color != NULL)
+		*glow_color = hud->glow_color;
 	return (hud->glow);
 }
 
@@ -726,9 +745,9 @@ render_glass(const hud_t *hud, const mat4 pvm)
 
 static void
 render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
-    unsigned prog)
+    unsigned prog, bool is_glow)
 {
-	vect3_t monochrome;
+	vect3_t beam_color;
 	GLuint tex;
 
 	ASSERT(hud != NULL);
@@ -739,7 +758,10 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 	tex = mt_cairo_render_get_tex(hud->mtcr);
 	if (tex == 0)
 		return;
-	monochrome = mt_cairo_render_get_monochrome(hud->mtcr);
+	if (is_glow)
+		beam_color = hud->glow_color;
+	else
+		beam_color = mt_cairo_render_get_monochrome(hud->mtcr);
 
 	glutils_debug_push(0, "hud_render_projection");
 
@@ -769,9 +791,9 @@ render_projection(const hud_t *hud, const mat4 pvm, const vec4 vp,
 
 	glUniform1f(hud->proj_shader[prog].blur_radius, hud->blur_radius);
 	glUniform1f(hud->proj_shader[prog].brt, hud->brt);
-	if (!IS_NULL_VECT(monochrome)) {
+	if (!IS_NULL_VECT(beam_color)) {
 		glUniform3f(hud->proj_shader[prog].beam_color,
-		    monochrome.x, monochrome.y, monochrome.z);
+		    beam_color.x, beam_color.y, beam_color.z);
 	}
 	obj8_draw_group(hud->proj, hud->proj_group,
 	    hud->proj_shader[prog].prog, pvm);
@@ -817,15 +839,17 @@ hud_render_eye(hud_t *hud, const mat4 pvm, const vec4 vp)
 
 	/* Draw the actual collimated projection */
 	if (hud->glow) {
-		if (IS_NULL_VECT(monochrome))
-			render_projection(hud, pvm, vp, PROJ_SHADER_GLOW);
-		else
-			render_projection(hud, pvm, vp, PROJ_SHADER_MONO_GLOW);
+		if (IS_NULL_VECT(monochrome)) {
+			render_projection(hud, pvm, vp, PROJ_SHADER_GLOW, true);
+		} else {
+			render_projection(hud, pvm, vp, PROJ_SHADER_MONO_GLOW,
+			    true);
+		}
 	}
 	if (IS_NULL_VECT(monochrome))
-		render_projection(hud, pvm, vp, PROJ_SHADER_NOGLOW);
+		render_projection(hud, pvm, vp, PROJ_SHADER_NOGLOW, false);
 	else
-		render_projection(hud, pvm, vp, PROJ_SHADER_MONO_NOGLOW);
+		render_projection(hud, pvm, vp, PROJ_SHADER_MONO_NOGLOW, false);
 	glDepthMask(GL_TRUE);
 
 	glutils_debug_pop();
