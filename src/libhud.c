@@ -29,8 +29,10 @@
 
 #include "libhud.h"
 
+#if	!APL
 #define	CAPTURE_PHASE		xplm_Phase_Modern3D
 #define	CAPTURE_PHASE_BEFORE	false
+#endif	/* !APL */
 #define	DRAW_PHASE		xplm_Phase_Window
 #define	DRAW_PHASE_BEFORE	true
 
@@ -185,35 +187,14 @@ struct hud_s {
 	} drs;
 };
 
-static int
-capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
+static void
+capture_mtx_common(hud_t *hud, unsigned idx, int dct)
 {
-	hud_t *hud;
-	int idx, dct;
 	int vp[4];
 
-	UNUSED(phase);
-	UNUSED(before);
-	ASSERT(refcon != NULL);
-	hud = refcon;
-	/*
-	 * No GL calls take place here, so no need for GLUTILS_RESET_ERRORS()
-	 */
-	dct = dr_geti(&hud->drs.draw_call_type);
-	switch (dct) {
-	case DRAW_CALL_RIGHT_EYE:
-		idx = 1;
-		hud->num_eyes = 2;
-		break;
-	case DRAW_CALL_LEFT_EYE:
-		idx = 0;
-		hud->num_eyes = 2;
-		break;
-	default:
-		idx = 0;
-		hud->num_eyes = 1;
-		break;
-	}
+	ASSERT(hud != NULL);
+	ASSERT3U(idx, <, 2);
+
 	VERIFY3S(dr_getvf32(&hud->drs.acf_mtx,
 	    (float *)hud->acf_mtx[idx], 0, 16), ==, 16);
 	VERIFY3S(dr_getvf32(&hud->drs.proj_mtx,
@@ -243,6 +224,7 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 		for (int i = 0; i < 4; i++)
 			hud->proj_mtx[idx][3][i] /= 100;
 	}
+#if	!APL
 	if (hud->drs.aa_ratio_avail) {
 		vect2_t fsaa_ratio = VECT2(dr_getf(&hud->drs.fsaa_ratio_x),
 		    dr_getf(&hud->drs.fsaa_ratio_y));
@@ -253,9 +235,56 @@ capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
 			hud->vp[idx][3] /= fsaa_ratio.y;
 		}
 	}
+#endif	/* !defined(APL) */
+}
+
+#if	!APL
+
+static int
+capture_cb(XPLMDrawingPhase phase, int before, void *refcon)
+{
+	hud_t *hud;
+	int idx, dct;
+
+	UNUSED(phase);
+	UNUSED(before);
+	ASSERT(refcon != NULL);
+	hud = refcon;
+	/*
+	 * No GL calls take place here, so no need for GLUTILS_RESET_ERRORS()
+	 */
+	dct = dr_geti(&hud->drs.draw_call_type);
+	switch (dct) {
+	case DRAW_CALL_RIGHT_EYE:
+		idx = 1;
+		hud->num_eyes = 2;
+		break;
+	case DRAW_CALL_LEFT_EYE:
+		idx = 0;
+		hud->num_eyes = 2;
+		break;
+	default:
+		idx = 0;
+		hud->num_eyes = 1;
+		break;
+	}
+
+	capture_mtx_common(hud, idx, dct);
 
 	return (1);
 }
+
+#else	/* APL */
+
+static void
+capture_mtx_apple(hud_t *hud)
+{
+	ASSERT(hud != NULL);
+	hud->num_eyes = 1;
+	capture_mtx_common(hud, 0, DRAW_CALL_MONO);
+}
+
+#endif	/* APL */
 
 static int
 draw_cb(XPLMDrawingPhase phase, int before, void *refcon)
@@ -268,6 +297,10 @@ draw_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	UNUSED(before);
 	ASSERT(refcon != NULL);
 	hud = refcon;
+
+#if	APL
+	capture_mtx_apple(hud);
+#endif
 	/*
 	 * X-Plane tends to run in reverse-Y when drawing 3D. So in that
 	 * case, our projection is reversed. It's easiest to just swap
@@ -423,7 +456,11 @@ hud_new(const char *shader_dir, mt_cairo_render_t *mtcr, double glass_opacity,
 	    "sim/graphics/view/plane_render_type");
 	fdr_find(&hud->drs.world_render_type,
 	    "sim/graphics/view/world_render_type");
+#if	!APL
 	fdr_find(&hud->drs.proj_mtx, "sim/graphics/view/projection_matrix");
+#else
+	fdr_find(&hud->drs.proj_mtx, "sim/graphics/view/projection_matrix_3d");
+#endif
 	fdr_find(&hud->drs.acf_mtx, "sim/graphics/view/acf_matrix");
 	fdr_find(&hud->drs.vp, "sim/graphics/view/viewport");
 	fdr_find(&hud->drs.rev_y, "sim/graphics/view/is_reverse_y");
@@ -471,8 +508,10 @@ hud_destroy(hud_t *hud)
 	free(hud->proj_group);
 
 	if (hud->enabled) {
+#if	!APL
 		VERIFY(XPLMUnregisterDrawCallback(capture_cb,
 		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+#endif	/* !defined(APL) */
 		VERIFY(XPLMUnregisterDrawCallback(draw_cb,
 		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
 	}
@@ -499,13 +538,17 @@ hud_set_enabled(hud_t *hud, bool flag)
 
 	hud->enabled = flag;
 	if (flag) {
+#if	!APL
 		VERIFY(XPLMRegisterDrawCallback(capture_cb,
 		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+#endif	/* !defined(APL) */
 		VERIFY(XPLMRegisterDrawCallback(draw_cb,
 		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
 	} else {
+#if	!APL
 		VERIFY(XPLMUnregisterDrawCallback(capture_cb,
 		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+#endif	/* !defined(APL) */
 		VERIFY(XPLMUnregisterDrawCallback(draw_cb,
 		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
 	}
