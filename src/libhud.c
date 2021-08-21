@@ -27,6 +27,8 @@
 #include <acfutils/shader.h>
 #include <acfutils/time.h>
 
+#include <libdrawcb.h>
+
 #include "libhud.h"
 
 #if	!APL
@@ -509,11 +511,11 @@ hud_destroy(hud_t *hud)
 
 	if (hud->enabled) {
 #if	!APL
-		VERIFY(XPLMUnregisterDrawCallback(capture_cb,
-		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+		libdrawcb_unregister(capture_cb, CAPTURE_PHASE,
+		    CAPTURE_PHASE_BEFORE, hud, "10-libhud");
 #endif	/* !defined(APL) */
-		VERIFY(XPLMUnregisterDrawCallback(draw_cb,
-		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
+		libdrawcb_unregister(draw_cb, DRAW_PHASE,
+		    DRAW_PHASE_BEFORE, hud, "10-libhud");
 	}
 
 	free(hud);
@@ -539,18 +541,18 @@ hud_set_enabled(hud_t *hud, bool flag)
 	hud->enabled = flag;
 	if (flag) {
 #if	!APL
-		VERIFY(XPLMRegisterDrawCallback(capture_cb,
-		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+		LIBDRAWCB_REGISTER(capture_cb, CAPTURE_PHASE,
+		    CAPTURE_PHASE_BEFORE, hud, "10-libhud");
 #endif	/* !defined(APL) */
-		VERIFY(XPLMRegisterDrawCallback(draw_cb,
-		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
+		LIBDRAWCB_REGISTER(draw_cb, DRAW_PHASE,
+		    DRAW_PHASE_BEFORE, hud, "10-libhud");
 	} else {
 #if	!APL
-		VERIFY(XPLMUnregisterDrawCallback(capture_cb,
-		    CAPTURE_PHASE, CAPTURE_PHASE_BEFORE, hud));
+		libdrawcb_unregister(capture_cb, CAPTURE_PHASE,
+		    CAPTURE_PHASE_BEFORE, hud, "10-libhud");
 #endif	/* !defined(APL) */
-		VERIFY(XPLMUnregisterDrawCallback(draw_cb,
-		    DRAW_PHASE, DRAW_PHASE_BEFORE, hud));
+		libdrawcb_unregister(draw_cb, DRAW_PHASE,
+		    DRAW_PHASE_BEFORE, hud, "10-libhud");
 	}
 }
 
