@@ -27,7 +27,14 @@
 #include <acfutils/shader.h>
 #include <acfutils/time.h>
 
+#ifdef	LIBHUD_USE_LIBDRAWCB
 #include <libdrawcb.h>
+#else	/* !defined(LIBHUD_USE_LIBDRAWCB) */
+#define	LIBDRAWCB_REGISTER(__cb, __phase, __before, __refcon, __unused) \
+	XPLMRegisterDrawCallback((__cb), (__phase), (__before), (__refcon))
+#define	libdrawcb_unregister(__cb, __phase, __before, __refcon, __unused) \
+	XPLMUnregisterDrawCallback((__cb), (__phase), (__before), (__refcon))
+#endif	/* !defined(LIBHUD_USE_LIBDRAWCB) */
 
 #include "libhud.h"
 
