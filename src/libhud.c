@@ -668,6 +668,28 @@ hud_get_glow(const hud_t *hud, float *blur_radius, vect3_t *glow_color)
 }
 
 /**
+ * Allows setting the glass opacity of the combiner glass at runtime.
+ * See hud_new for more information about the glass_opacity parameter.
+ */
+void
+hud_set_glass_opacity(hud_t *hud, double glass_opacity)
+{
+	ASSERT(hud != NULL);
+	hud->glass_opacity = glass_opacity;
+}
+
+/**
+ * Returns the current glass opacity for the HUD combiner glass.
+ * See hud_new for more information about the glass_opacity parameter.
+ */
+double
+hud_get_glass_opacity(const hud_t *hud)
+{
+	ASSERT(hud != NULL);
+	return (hud->glass_opacity);
+}
+
+/**
  * Configures whether the projection is rendered with depth testing enabled.
  * The default is depth testing disabled, because the projection is rendered
  * in window-space without a proper 3D depth buffer. However, when using

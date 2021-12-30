@@ -44,6 +44,9 @@ float hud_get_brightness(const hud_t *hud);
 void hud_set_glow(hud_t *hud, bool flag, float blur_radius, vect3_t glow_color);
 bool hud_get_glow(const hud_t *hud, float *blur_radius, vect3_t *glow_color);
 
+void hud_set_glass_opacity(hud_t *hud, double glass_opacity);
+double hud_get_glass_opacity(const hud_t *hud);
+
 void hud_set_depth_test(hud_t *hud, bool flag);
 bool hud_get_depth_test(const hud_t *hud);
 
