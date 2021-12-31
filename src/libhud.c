@@ -783,6 +783,7 @@ render_stencil(const hud_t *hud, const mat4 pvm, const vec4 vp)
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, hud->stencil_fbo);
 	glViewport(0, 0, hud->stencil_w, hud->stencil_h);
+	glClearColor(0, 0, 0, 0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(hud->stencil_shader.prog);
